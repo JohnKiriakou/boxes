@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Warehouse Pro</title>
+    <style>
+        body { background: #111; color: #eee; font-family: 'Segoe UI', Tahoma, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+        canvas { border: 2px solid #333; background: #000; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
+        #ui { display: flex; gap: 40px; margin-bottom: 20px; background: #222; padding: 15px 30px; border-radius: 8px; border: 1px solid #444; }
+        .stat-val { color: #0af; font-weight: bold; font-family: monospace; font-size: 1.2em; }
+        #settings { margin-top: 20px; background: #222; padding: 10px; border-radius: 5px; font-size: 12px; }
+        button { background: #444; color: white; border: none; padding: 5px 10px; cursor: pointer; border-radius: 3px; }
+        button:hover { background: #555; }
+        .rebinding { background: #0af; }
+    </style>
+</head>
+<body>
+
+    <div id="ui">
+        <div>LEVEL <span id="lvl" class="stat-val">1</span></div>
+        <div>MOVES <span id="mov" class="stat-val">0</span></div>
+        <div>TOTAL CLEARED <span id="total" class="stat-val">0</span></div>
+    </div>
+
+    <canvas id="g"></canvas>
+
+    <div id="settings">
+        Controls: <button id="rebindBtn">Rebind Keys</button> 
+        (Current: <span id="keyDisplay">WASD</span>) | Press 'R' to Reset
+    </div>
+
+<script>
+const TILE = 50;
+const ctx = document.getElementById('g').getContext('2d');
+const lvlEl = document.getElementById('lvl'), movEl = document.getElementById('mov'), totalEl = document.getElementById('total');
+
+// State
+let player, crates = [], targets = [], walls = [];
+let level = 1, moves = 0, totalCleared = 0;
+let gridW = 8, gridH = 8;
+let keys = { up: 'KeyW', down: 'KeyS', left: 'KeyA', right: 'KeyD' };
+let isRebinding = false, rebindStep = 0;
+
+function generateLevel() {
+    walls = []; targets = []; crates = []; moves = 0;
+    movEl.innerText = moves; lvlEl.innerText = level;
+
+    // Build Walls
+    for(let y=0; y<gridH; y++) {
+        for(let x=0; x<gridW; x++) {
+            if(x===0 || y===0 || x===gridW-1 || y===gridH-1) walls.push({x,y});
+        }
+    }
+
+    // Start with a solved state
+    player = {x: 2, y: 2};
+    let numCrates = level < 5 ? 2 : 3;
+    let pool = [];
+    for(let y=2; y<gridH-2; y++) for(let x=2; x<gridW-2; x++) pool.push({x,y});
+    
+    for(let i=0; i<numCrates; i++) {
+        let p = pool.splice(Math.floor(Math.random()*pool.length), 1)[0];
+        targets.push({...p});
+        crates.push({...p});
+    }
+
+    // Scramble (Reverse Walk)
+    for(let i=0; i<60; i++) {
+        let dir = [{x:0,y:1},{x:0,y:-1},{x:1,y:0},{x:-1,y:0}][Math.floor(Math.random()*4)];
+        let c = crates[Math.floor(Math.random()*crates.length)];
+        let pNext = {x: c.x + dir.x, y: c.y + dir.y};
+        let cNext = {x: c.x + dir.x * 2, y: c.y + dir.y * 2};
+
+        if(valid(pNext) && valid(cNext)) {
+            if(!crates.some(other => (other.x===pNext.x && other.y===pNext.y) || (other.x===cNext.x && other.y===cNext.y))) {
+                player = {x: pNext.x, y: pNext.y};
+                c.x = pNext.x; c.y = pNext.y; 
+            }
+        }
+    }
+
+    // Final check: Move player if stuck inside a crate
+    while(crates.some(c => c.x === player.x && c.y === player.y)) {
+        player.x = 1 + Math.floor(Math.random()*(gridW-2));
+        player.y = 1 + Math.floor(Math.random()*(gridH-2));
+    }
+
+    ctx.canvas.width = gridW * TILE; ctx.canvas.height = gridH * TILE;
+    draw();
+}
+
+function valid(p) { return p.x > 0 && p.x < gridW-1 && p.y > 0 && p.y < gridH-1; }
+
+function draw() {
+    ctx.fillStyle = '#000'; ctx.fillRect(0,0,ctx.canvas.width, ctx.canvas.height);
+    
+    // Walls
+    ctx.fillStyle = '#333';
+    walls.forEach(w => ctx.fillRect(w.x*TILE, w.y*TILE, TILE, TILE));
+
+    // Targets
+    targets.forEach(t => {
+        ctx.strokeStyle = '#555'; ctx.lineWidth = 2;
+        ctx.strokeRect(t.x*TILE+15, t.y*TILE+15, TILE-30, TILE-30);
+    });
+
+    // Crates
+    crates.forEach(c => {
+        let isOver = targets.some(t => t.x===c.x && t.y===c.y);
+        ctx.fillStyle = isOver ? '#ffcc00' : '#885500'; // Brighter if on target
+        ctx.fillRect(c.x*TILE+6, c.y*TILE+6, TILE-12, TILE-12);
+        if(isOver) { ctx.strokeStyle = "#fff"; ctx.strokeRect(c.x*TILE+6, c.y*TILE+6, TILE-12, TILE-12); }
+    });
+
+    // Player
+    ctx.fillStyle = '#0af'; ctx.fillRect(player.x*TILE+12, player.y*TILE+12, TILE-24, TILE-24);
+}
+
+window.addEventListener('keydown', (e) => {
+    if(isRebinding) {
+        handleRebind(e.code);
+        return;
+    }
+
+    if(e.key.toLowerCase() === 'r') { generateLevel(); return; }
+
+    let dx=0, dy=0;
+    if(e.code === keys.up) dy = -1;
+    if(e.code === keys.down) dy = 1;
+    if(e.code === keys.left) dx = -1;
+    if(e.code === keys.right) dx = 1;
+    if(dx===0 && dy===0) return;
+
+    let nx = player.x + dx, ny = player.y + dy;
+    if(walls.some(w => w.x === nx && w.y === ny)) return;
+
+    let crate = crates.find(c => c.x === nx && c.y === ny);
+    if(crate) {
+        let cx = crate.x + dx, cy = crate.y + dy;
+        if(walls.some(w => w.x === cx && w.y === cy) || crates.some(c => c.x === cx && c.y === cy)) return;
+        crate.x = cx; crate.y = cy;
+    }
+    
+    player.x = nx; player.y = ny;
+    moves++; movEl.innerText = moves;
+    draw();
+
+    if(crates.every(c => targets.some(t => t.x === c.x && t.y === c.y))) {
+        totalCleared++; totalEl.innerText = totalCleared;
+        level++; setTimeout(generateLevel, 200);
+    }
+});
+
+// Rebinding Logic
+const rebindBtn = document.getElementById('rebindBtn');
+const keyDisplay = document.getElementById('keyDisplay');
+const steps = ['UP', 'DOWN', 'LEFT', 'RIGHT'];
+
+rebindBtn.onclick = () => {
+    isRebinding = true;
+    rebindStep = 0;
+    rebindBtn.classList.add('rebinding');
+    rebindBtn.innerText = "Press key for UP";
+};
+
+function handleRebind(code) {
+    if(rebindStep === 0) keys.up = code;
+    if(rebindStep === 1) keys.down = code;
+    if(rebindStep === 2) keys.left = code;
+    if(rebindStep === 3) keys.right = code;
+    
+    rebindStep++;
+    if(rebindStep < 4) {
+        rebindBtn.innerText = `Press key for ${steps[rebindStep]}`;
+    } else {
+        isRebinding = false;
+        rebindBtn.classList.remove('rebinding');
+        rebindBtn.innerText = "Rebind Keys";
+        keyDisplay.innerText = "Custom";
+    }
+}
+
+generateLevel();
+</script>
+</body>
+</html>
