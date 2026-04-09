@@ -106,7 +106,7 @@ function draw() {
     // Crates
     crates.forEach(c => {
         let isOver = targets.some(t => t.x===c.x && t.y===c.y);
-        ctx.fillStyle = isOver ? '#ffcc00' : '#885500'; // Brighter if on target
+        ctx.fillStyle = isOver ? '#ffcc00' : '#ffffff'; // Brighter if on target
         ctx.fillRect(c.x*TILE+6, c.y*TILE+6, TILE-12, TILE-12);
         if(isOver) { ctx.strokeStyle = "#fff"; ctx.strokeRect(c.x*TILE+6, c.y*TILE+6, TILE-12, TILE-12); }
     });
